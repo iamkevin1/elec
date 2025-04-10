@@ -4,3 +4,7 @@ pandas
 plotly
 Pillow
 matplotlib
+streamlit
+pandas
+plotly
+pytz
