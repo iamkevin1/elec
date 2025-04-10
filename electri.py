@@ -1,95 +1,69 @@
 import streamlit as st
 import pandas as pd
-import datetime
+from datetime import datetime
 import pytz
-import plotly.express as px
 import os
 
-# Set IST timezone
-IST = pytz.timezone("Asia/Kolkata")
-
-# Streamlit Page Config
-st.set_page_config(page_title="Electricity Analyzer", layout="centered")
+st.set_page_config(page_title="Electricity Reading and Analyzer", layout="centered")
 st.title("⚡ Electricity Reading and Analyzer")
 
-# Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["📥 Upload Reading", "📋 View Data", "📈 Analyze", "🔌 Appliances"])
+st.header("📤 Upload Electricity Reading")
 
-# 1. Upload Tab
-with tab1:
-    st.header("📥 Upload Electricity Reading")
+# Upload image (optional)
+uploaded_image = st.file_uploader("Upload meter image", type=["png", "jpg", "jpeg"])
 
-    uploaded_image = st.file_uploader("Upload meter image", type=["jpg", "png", "jpeg"])
-    reading = st.number_input("Enter reading (in kWh)", step=0.1)
+# Enter kWh reading
+reading = st.number_input("Enter reading (in kWh)", min_value=0.0, format="%.2f")
 
-    # Date Input
-    date = st.date_input("Enter Date", datetime.datetime.now(IST).date())
+# Manually select date and time
+date_input = st.date_input("Select date of reading")
+time_input = st.time_input("Select time of reading (12-hour with AM/PM)")
 
-    # Manual time input
-    time_input_str = st.text_input("Enter time (e.g., 03:45 PM)", value="06:00 PM")
+# Save button
+if st.button("Submit Reading"):
+    if reading and date_input and time_input:
+        # Combine date and time
+        timestamp = datetime.combine(date_input, time_input)
 
-    try:
-        time_obj = datetime.datetime.strptime(time_input_str, "%I:%M %p").time()
-        timestamp = datetime.datetime.combine(date, time_obj)
-        timestamp = IST.localize(timestamp)
-    except ValueError:
-        st.warning("⚠️ Invalid time format. Use format like 04:30 PM")
-        timestamp = None
+        # Convert to Asia/Kolkata timezone
+        india = pytz.timezone("Asia/Kolkata")
+        timestamp = india.localize(timestamp)
 
-    if st.button("💾 Save Reading") and timestamp:
-        data = {"timestamp": [timestamp.isoformat()], "reading": [reading]}
-        df = pd.DataFrame(data)
+        # Format display time
+        display_time = timestamp.strftime("%d-%m-%Y %I:%M %p")
+        st.success(f"Reading recorded at: {display_time}")
 
-        if os.path.exists("readings.csv"):
-            df_old = pd.read_csv("readings.csv")
-            df_all = pd.concat([df_old, df], ignore_index=True)
+        # Save to CSV
+        new_data = pd.DataFrame({
+            "reading": [reading],
+            "timestamp": [timestamp.isoformat()]
+        })
+
+        file_path = "readings.csv"
+        if os.path.exists(file_path):
+            existing = pd.read_csv(file_path)
+            df = pd.concat([existing, new_data], ignore_index=True)
         else:
-            df_all = df
+            df = new_data
 
-        df_all.to_csv("readings.csv", index=False)
-        st.success("✅ Reading saved successfully!")
-
-# 2. View Data Tab
-with tab2:
-    st.header("📋 All Recorded Readings")
-
-    if os.path.exists("readings.csv"):
-        df = pd.read_csv("readings.csv")
-
-        # Parse timestamp correctly
-        df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_convert("Asia/Kolkata")
-        df["timestamp"] = df["timestamp"].dt.strftime("%Y-%m-%d %I:%M %p")  # AM/PM format
-        st.dataframe(df.sort_values("timestamp", ascending=False))
+        df.to_csv(file_path, index=False)
+        st.success("Reading saved successfully.")
     else:
-        st.info("No readings yet. Please upload one.")
+        st.warning("Please fill out all fields before submitting.")
 
-# 3. Analysis Tab
-with tab3:
-    st.header("📈 Analyze Consumption")
+# View all readings
+st.header("📋 All Recorded Readings")
 
-    if os.path.exists("readings.csv"):
-        df = pd.read_csv("readings.csv")
-        df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_convert("Asia/Kolkata")
-        df = df.sort_values("timestamp")
-        df["diff_kWh"] = df["reading"].diff()
-        df["date"] = df["timestamp"].dt.date
+file_path = "readings.csv"
+if os.path.exists(file_path):
+    df = pd.read_csv(file_path)
 
-        st.plotly_chart(px.line(df, x="timestamp", y="reading", title="📊 Total Reading Over Time"))
-        st.plotly_chart(px.bar(df, x="date", y="diff_kWh", title="🔋 Daily Consumption"))
-    else:
-        st.info("No data available yet.")
+    # Safely parse datetime and convert to IST
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    df = df.dropna(subset=["timestamp"])
+    df["timestamp"] = df["timestamp"].dt.tz_convert("Asia/Kolkata")
+    df["Time (IST)"] = df["timestamp"].dt.strftime("%d-%m-%Y %I:%M %p")
 
-# 4. Appliance Estimator Tab
-with tab4:
-    st.header("🔌 Appliance Usage Estimator")
-
-    appliance = st.text_input("Appliance name")
-    wattage = st.number_input("Power rating (Watts)", step=10)
-    hours = st.number_input("Usage per day (hours)", step=0.5)
-
-    if st.button("⚙️ Estimate Usage"):
-        if appliance and wattage > 0 and hours > 0:
-            kwh = (wattage * hours) / 1000
-            st.success(f"{appliance} consumes approx. {kwh:.2f} kWh/day")
-        else:
-            st.warning("Fill all details correctly.")
+    st.dataframe(df[["reading", "Time (IST)"]])
+else:
+    st.info("No readings recorded yet.")
