@@ -8,3 +8,4 @@ streamlit
 pandas
 plotly
 pytz
+pymongo
