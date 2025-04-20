@@ -3,6 +3,12 @@ import pandas as pd
 from datetime import datetime
 import pytz
 import os
+from pymongo import MongoClient
+
+# MongoDB setup
+client = MongoClient("mongodb+srv://iamkevinnow1:qdwpA1iuNBk2u5ja@cluster0.b2xmunt.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+db = client["electricity"]
+collection = db["2025"]
 
 # Streamlit setup
 st.set_page_config(page_title="Electricity Reading", layout="centered")
@@ -32,29 +38,34 @@ if st.button("Submit Reading"):
         display_time = localized_timestamp.strftime("%d-%m-%Y %I:%M %p")
         st.success(f"✅ Reading recorded at: {display_time}")
 
-        # Save to CSV
-        new_data = pd.DataFrame({
-            "Reading (kWh)": [reading],
-            "Timestamp (IST)": [localized_timestamp.strftime("%Y-%m-%d %H:%M:%S %Z")]
-        })
+        # Prepare data
+        data = {
+            "Reading (kWh)": reading,
+            "Timestamp (IST)": localized_timestamp.strftime("%Y-%m-%d %H:%M:%S %Z")
+        }
 
+        # Save to MongoDB
+        collection.insert_one(data)
+        st.success("✅ Reading saved to MongoDB!")
+
+        # Optionally also save to CSV (optional redundancy)
+        new_data = pd.DataFrame([data])
         file_path = "readings.csv"
         if os.path.exists(file_path):
             df_existing = pd.read_csv(file_path)
             df = pd.concat([df_existing, new_data], ignore_index=True)
         else:
             df = new_data
-
         df.to_csv(file_path, index=False)
-        st.success("✅ Reading saved successfully!")
+
     else:
         st.warning("Please fill in all fields before submitting.")
 
-# View all readings
+# View all readings from MongoDB
 st.header("📋 All Recorded Readings")
-file_path = "readings.csv"
-if os.path.exists(file_path):
-    df = pd.read_csv(file_path)
+mongo_data = list(collection.find({}, {"_id": 0}))  # Hide MongoDB's default _id field
+if mongo_data:
+    df = pd.DataFrame(mongo_data)
     st.dataframe(df)
 else:
     st.info("No readings available yet.")
